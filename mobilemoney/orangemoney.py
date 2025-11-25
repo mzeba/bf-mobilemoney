@@ -125,47 +125,98 @@ class GenericPayment(BasePayment):
             dict: Parsed response with status, message, and transaction ID
         """
         try:
+            # Validate input
             if not isinstance(result, str):
-                raise ValueError("Result must be a string")
-
-            root = ET.fromstring("<root>" + result + "</root>")
-
-            status, message, trans_id = (
-                root.find("status"),
-                root.find("message"),
-                root.find("transID"),
-            )
-
-            if (
-                (status is not None)
-                and (message is not None)
-                and (trans_id is not None)
-            ):
-                response = {
-                    "status": status.text,
-                    "message": message.text,
-                    "trans_id": trans_id.text,
-                }
-                logger.info(f"Successfully parsed API response: {response}")
-                return response
-            else:
-                logger.error(f"Incomplete API response: {result}")
+                error_msg = f"Result must be a string, got {type(result).__name__}"
+                logger.error(error_msg)
                 return {
-                    "message": "Erreur de retour de l'API OM - Réponse incomplète",
+                    "message": error_msg,
                     "status": "OM-500",
                     "trans_id": "Error",
                 }
-        except ET.ParseError as e:
-            logger.error(f"XML parsing error: {e}")
-            return {
-                "message": f"Erreur de parsing XML: {str(e)}",
-                "status": "OM-501",
-                "trans_id": "Error",
+
+            if not result.strip():
+                error_msg = "Empty response received from API"
+                logger.error(error_msg)
+                return {
+                    "message": error_msg,
+                    "status": "OM-500",
+                    "trans_id": "Error",
+                }
+
+            # Parse XML with proper error handling
+            try:
+                root = ET.fromstring("<root>" + result + "</root>")
+            except ET.ParseError as e:
+                error_msg = (
+                    f"Erreur de parsing XML: {str(e)} - Réponse: {result[:100]}..."
+                )
+                logger.error(error_msg)
+                return {
+                    "message": error_msg,
+                    "status": "OM-501",
+                    "trans_id": "Error",
+                }
+
+            # Extract elements with null checks
+            status = root.find("status")
+            message = root.find("message")
+            trans_id = root.find("transID")
+
+            # Check if all required elements are present
+            missing_fields = []
+            if status is None:
+                missing_fields.append("status")
+            if message is None:
+                missing_fields.append("message")
+            if trans_id is None:
+                missing_fields.append("transID")
+
+            if missing_fields:
+                error_msg = (
+                    f"Champs manquants dans la réponse API: {', '.join(missing_fields)}"
+                )
+                logger.error(f"{error_msg} - Réponse complète: {result}")
+                return {
+                    "message": error_msg,
+                    "status": "OM-500",
+                    "trans_id": "Error",
+                }
+
+            # Validate that text content exists
+            if not status.text or not message.text or not trans_id.text:
+                empty_fields = []
+                if not status.text:
+                    empty_fields.append("status")
+                if not message.text:
+                    empty_fields.append("message")
+                if not trans_id.text:
+                    empty_fields.append("transID")
+
+                error_msg = (
+                    f"Champs vides dans la réponse API: {', '.join(empty_fields)}"
+                )
+                logger.error(f"{error_msg} - Réponse complète: {result}")
+                return {
+                    "message": error_msg,
+                    "status": "OM-500",
+                    "trans_id": "Error",
+                }
+
+            # Successfully parsed response
+            response = {
+                "status": status.text.strip(),
+                "message": message.text.strip(),
+                "trans_id": trans_id.text.strip(),
             }
+            logger.info(f"Successfully parsed API response: {response}")
+            return response
+
         except Exception as e:
-            logger.error(f"Unexpected error parsing result: {e}")
+            error_msg = f"Erreur inattendue lors du parsing: {str(e)}"
+            logger.exception(error_msg)  # Logs full traceback
             return {
-                "message": f"Erreur inattendue: {str(e)}",
+                "message": error_msg,
                 "status": "OM-502",
                 "trans_id": "Error",
             }
@@ -198,54 +249,146 @@ class GenericPayment(BasePayment):
             ValueError: If input validation fails
         """
         try:
+            # Validate URL configuration
             if not self._url:
-                raise ValueError("API URL not configured")
+                error_msg = "API URL not configured"
+                self._logger.error(error_msg)
+                raise ValueError(error_msg)
 
+            # Prepare request
             headers = {"content-type": "application/xml"}
-            data = self.parse_query(
-                customer_phone, customer_otp, amount, message, reference
-            )
 
-            response = self._make_request(
-                method="POST",
-                url=self._url,
-                headers=headers,
-                data=data,
-                verify_ssl=verify_ssl,
-            )
+            try:
+                data = self.parse_query(
+                    customer_phone, customer_otp, amount, message, reference
+                )
+            except ValueError as e:
+                # Input validation errors from parse_query
+                self._logger.error(f"Validation error: {e}")
+                return {
+                    "message": f"Erreur de validation des données: {str(e)}",
+                    "status": "OM-400",
+                    "trans_id": "Error",
+                }
+            except Exception as e:
+                self._logger.error(f"Error building request: {e}")
+                return {
+                    "message": f"Erreur de construction de la requête: {str(e)}",
+                    "status": "OM-500",
+                    "trans_id": "Error",
+                }
 
-            response.raise_for_status()  # Raise an exception for bad status codes
+            # Make HTTP request
+            try:
+                response = self._make_request(
+                    method="POST",
+                    url=self._url,
+                    headers=headers,
+                    data=data,
+                    verify_ssl=verify_ssl,
+                )
+            except Exception as e:
+                error_type = type(e).__name__
+                error_msg = str(e).lower()
 
-            result = self.parse_result(response.text)
-            self._logger.info(f"Parsed API response: {result}")
-            return result
+                self._logger.error(f"{error_type} during request: {e}")
 
+                # Classify error by type
+                if "timeout" in error_msg or "timed out" in error_msg:
+                    return {
+                        "message": f"Timeout de l'API Orange Money ({self._url})",
+                        "status": "OM-503",
+                        "trans_id": "Error",
+                    }
+                elif "connection" in error_msg or "resolve" in error_msg:
+                    return {
+                        "message": f"Erreur de connexion à l'API Orange Money ({self._url})",
+                        "status": "OM-504",
+                        "trans_id": "Error",
+                    }
+                elif "ssl" in error_msg or "certificate" in error_msg:
+                    return {
+                        "message": f"Erreur SSL/Certificat: {str(e)}",
+                        "status": "OM-495",
+                        "trans_id": "Error",
+                    }
+                else:
+                    return {
+                        "message": f"Erreur de requête ({error_type}): {str(e)}",
+                        "status": "OM-506",
+                        "trans_id": "Error",
+                    }
+
+            # Validate HTTP status code
+            try:
+                response.raise_for_status()
+            except Exception as e:
+                status_code = (
+                    response.status_code
+                    if hasattr(response, "status_code")
+                    else "Unknown"
+                )
+                self._logger.error(f"HTTP {status_code} error: {e}")
+
+                # Try to parse error response anyway
+                if hasattr(response, "text") and response.text:
+                    result = self.parse_result(response.text)
+                    # Add HTTP status info to result
+                    if (
+                        result.get("status") == "OM-500"
+                    ):  # Default error from parse_result
+                        result["status"] = f"OM-505-{status_code}"
+                        result["message"] = (
+                            f"Erreur HTTP {status_code}: {result.get('message', str(e))}"
+                        )
+                    return result
+                else:
+                    return {
+                        "message": f"Erreur HTTP {status_code}: {str(e)}",
+                        "status": "OM-505",
+                        "trans_id": "Error",
+                    }
+
+            # Parse successful response
+            try:
+                if not hasattr(response, "text") or not response.text:
+                    self._logger.error("Empty response from API")
+                    return {
+                        "message": "Réponse vide de l'API Orange Money",
+                        "status": "OM-500",
+                        "trans_id": "Error",
+                    }
+
+                result = self.parse_result(response.text)
+                self._logger.info(
+                    f"Payment validation completed: {result.get('status')}"
+                )
+                return result
+
+            except Exception as e:
+                self._logger.exception(f"Error parsing response: {e}")
+                return {
+                    "message": f"Erreur de traitement de la réponse: {str(e)}",
+                    "status": "OM-502",
+                    "trans_id": "Error",
+                }
+
+        except ValueError as e:
+            # Configuration or validation errors
+            self._logger.error(f"Validation error: {e}")
+            return {
+                "message": f"Erreur de validation: {str(e)}",
+                "status": "OM-400",
+                "trans_id": "Error",
+            }
         except Exception as e:
-            self._logger.error(f"Payment validation error: {e}")
-            if "timeout" in str(e).lower():
-                return {
-                    "message": "Timeout de l'API Orange Money",
-                    "status": "OM-503",
-                    "trans_id": "Error",
-                }
-            elif "connection" in str(e).lower():
-                return {
-                    "message": "Erreur de connexion à l'API Orange Money",
-                    "status": "OM-504",
-                    "trans_id": "Error",
-                }
-            elif "http" in str(e).lower():
-                return {
-                    "message": f"Erreur HTTP: {e}",
-                    "status": "OM-505",
-                    "trans_id": "Error",
-                }
-            else:
-                return {
-                    "message": f"Erreur inattendue: {str(e)}",
-                    "status": "OM-506",
-                    "trans_id": "Error",
-                }
+            # Catch-all for unexpected errors
+            self._logger.exception(f"Unexpected error in validate_payment: {e}")
+            return {
+                "message": f"Erreur inattendue ({type(e).__name__}): {str(e)}",
+                "status": "OM-506",
+                "trans_id": "Error",
+            }
 
 
 class DevPayment(GenericPayment):

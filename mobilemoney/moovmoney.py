@@ -144,18 +144,28 @@ class GenericPayment(BasePayment):
             ValueError: If option is not valid or inputs are invalid
             requests.RequestException: If network request fails
         """
+        # Validate option
         if option not in SEND_OTP_OPTIONS:
-            raise ValueError(
+            error_msg = (
                 f"'option' parameter must be one of '{','.join(SEND_OTP_OPTIONS)}'"
             )
+            self._logger.error(error_msg)
+            raise ValueError(error_msg)
 
         # Validate inputs
-        if not isinstance(customer_phone, str) or not customer_phone.strip():
-            raise ValueError("Customer phone number must be a non-empty string")
-        if not isinstance(amount, int) or amount <= 0:
-            raise ValueError("Amount must be a positive integer")
-        if reference is not None and not isinstance(reference, str):
-            raise ValueError("Reference must be a string or None")
+        try:
+            if not isinstance(customer_phone, str) or not customer_phone.strip():
+                raise ValueError("Customer phone number must be a non-empty string")
+            if not isinstance(amount, int) or amount <= 0:
+                raise ValueError("Amount must be a positive integer")
+            if reference is not None and not isinstance(reference, str):
+                raise ValueError("Reference must be a string or None")
+        except ValueError as e:
+            self._logger.error(f"Input validation error: {e}")
+            return {
+                "error": f"Erreur de validation: {str(e)}",
+                "status": "MM-400",
+            }
 
         # Normalize phone number
         phone_number = customer_phone
@@ -163,9 +173,16 @@ class GenericPayment(BasePayment):
             phone_number = f"226{customer_phone}"
 
         try:
+            # Validate URL configuration
             if not self._url:
-                raise ValueError("API URL not configured")
+                error_msg = "API URL not configured"
+                self._logger.error(error_msg)
+                return {
+                    "error": error_msg,
+                    "status": "MM-500",
+                }
 
+            # Prepare request data
             data = {
                 "request-id": reference or get_reference(),
                 "destination": phone_number,
@@ -181,28 +198,114 @@ class GenericPayment(BasePayment):
 
             auth = HTTPBasicAuth(self._username, self._password)
 
-            response = self._make_request(
-                method="POST",
-                url=self._url,
-                headers=headers,
-                json_data=data,
-                auth=auth,
-                verify_ssl=verify_ssl,
-            )
+            # Make HTTP request
+            try:
+                response = self._make_request(
+                    method="POST",
+                    url=self._url,
+                    headers=headers,
+                    json_data=data,
+                    auth=auth,
+                    verify_ssl=verify_ssl,
+                )
+            except Exception as e:
+                error_type = type(e).__name__
+                error_msg = str(e).lower()
 
-            response.raise_for_status()
-            return response.json()
+                self._logger.error(f"{error_type} during OTP request: {e}")
+
+                # Classify error by type
+                if "timeout" in error_msg or "timed out" in error_msg:
+                    return {
+                        "error": f"Timeout de l'API Moov Money ({self._url})",
+                        "status": "MM-503",
+                    }
+                elif "connection" in error_msg or "resolve" in error_msg:
+                    return {
+                        "error": f"Erreur de connexion à l'API Moov Money ({self._url})",
+                        "status": "MM-504",
+                    }
+                elif "ssl" in error_msg or "certificate" in error_msg:
+                    return {
+                        "error": f"Erreur SSL/Certificat: {str(e)}",
+                        "status": "MM-495",
+                    }
+                elif "401" in error_msg or "unauthorized" in error_msg:
+                    return {
+                        "error": "Erreur d'authentification - Vérifiez vos identifiants",
+                        "status": "MM-401",
+                    }
+                else:
+                    return {
+                        "error": f"Erreur de requête ({error_type}): {str(e)}",
+                        "status": "MM-506",
+                    }
+
+            # Validate HTTP status code
+            try:
+                response.raise_for_status()
+            except Exception as e:
+                status_code = (
+                    response.status_code
+                    if hasattr(response, "status_code")
+                    else "Unknown"
+                )
+                self._logger.error(f"HTTP {status_code} error in OTP request: {e}")
+
+                # Try to parse error response
+                error_response = {"status": f"MM-505-{status_code}"}
+                if hasattr(response, "text") and response.text:
+                    try:
+                        error_data = response.json()
+                        error_response["error"] = error_data.get(
+                            "message", error_data.get("error", str(e))
+                        )
+                        error_response.update(error_data)
+                    except:
+                        error_response["error"] = f"Erreur HTTP {status_code}: {str(e)}"
+                else:
+                    error_response["error"] = f"Erreur HTTP {status_code}: {str(e)}"
+                return error_response
+
+            # Parse successful response
+            try:
+                if not hasattr(response, "text") or not response.text:
+                    self._logger.error("Empty response from OTP API")
+                    return {
+                        "error": "Réponse vide de l'API Moov Money",
+                        "status": "MM-500",
+                    }
+
+                result = response.json()
+                self._logger.info(
+                    f"OTP request completed successfully: {result.get('status', 'OK')}"
+                )
+                return result
+
+            except ValueError as e:
+                # JSON parsing error
+                self._logger.error(f"JSON parsing error: {e}")
+                return {
+                    "error": f"Erreur de format de réponse JSON: {str(e)}",
+                    "status": "MM-502",
+                    "raw_response": (
+                        response.text[:200] if hasattr(response, "text") else None
+                    ),
+                }
+            except Exception as e:
+                self._logger.exception(f"Error parsing OTP response: {e}")
+                return {
+                    "error": f"Erreur de traitement de la réponse: {str(e)}",
+                    "status": "MM-502",
+                }
 
         except Exception as e:
-            self._logger.error(f"Error in _send_otp: {e}")
-            if "timeout" in str(e).lower():
-                return {"error": "Timeout de l'API Moov Money"}
-            elif "connection" in str(e).lower():
-                return {"error": "Erreur de connexion à l'API Moov Money"}
-            elif "http" in str(e).lower():
-                return {"error": f"Erreur HTTP: {e}"}
-            else:
-                return {"error": f"Erreur inattendue: {str(e)}"}
+            # Catch-all for unexpected errors
+            self._logger.exception(f"Unexpected error in _send_otp: {e}")
+            return {
+                "error": f"Erreur inattendue ({type(e).__name__}): {str(e)}",
+                "status": "MM-506",
+            }
 
     def send_otp(
         self,
@@ -282,47 +385,174 @@ class GenericPayment(BasePayment):
             ValueError: If input validation fails
         """
         try:
+            # Validate URL configuration
             if not self._url:
-                raise ValueError("API URL not configured")
+                error_msg = "API URL not configured"
+                self._logger.error(error_msg)
+                return {
+                    "error": error_msg,
+                    "status": "MM-500",
+                }
 
+            # Prepare request
             headers = {
                 "content-type": "application/json",
                 "command-id": "process-commit-otppay",
             }
 
-            payload = self.parse_query(
-                customer_phone,
-                customer_otp,
-                amount,
-                message,
-                otp_trans_id,
-                reference,
-            )
+            # Build payload with validation
+            try:
+                payload = self.parse_query(
+                    customer_phone,
+                    customer_otp,
+                    amount,
+                    message,
+                    otp_trans_id,
+                    reference,
+                )
+            except ValueError as e:
+                # Input validation errors from parse_query
+                self._logger.error(f"Validation error: {e}")
+                return {
+                    "error": f"Erreur de validation des données: {str(e)}",
+                    "status": "MM-400",
+                }
+            except Exception as e:
+                self._logger.error(f"Error building payment request: {e}")
+                return {
+                    "error": f"Erreur de construction de la requête: {str(e)}",
+                    "status": "MM-500",
+                }
 
             auth = HTTPBasicAuth(self._username, self._password)
 
-            response = self._make_request(
-                method="POST",
-                url=self._url,
-                headers=headers,
-                json_data=payload,
-                auth=auth,
-                verify_ssl=verify_ssl,
-            )
+            # Make HTTP request
+            try:
+                response = self._make_request(
+                    method="POST",
+                    url=self._url,
+                    headers=headers,
+                    json_data=payload,
+                    auth=auth,
+                    verify_ssl=verify_ssl,
+                )
+            except Exception as e:
+                error_type = type(e).__name__
+                error_msg = str(e).lower()
 
-            response.raise_for_status()
-            return response.json()
+                self._logger.error(f"{error_type} during payment request: {e}")
 
+                # Classify error by type
+                if "timeout" in error_msg or "timed out" in error_msg:
+                    return {
+                        "error": f"Timeout de l'API Moov Money ({self._url})",
+                        "status": "MM-503",
+                    }
+                elif "connection" in error_msg or "resolve" in error_msg:
+                    return {
+                        "error": f"Erreur de connexion à l'API Moov Money ({self._url})",
+                        "status": "MM-504",
+                    }
+                elif "ssl" in error_msg or "certificate" in error_msg:
+                    return {
+                        "error": f"Erreur SSL/Certificat: {str(e)}",
+                        "status": "MM-495",
+                    }
+                elif "401" in error_msg or "unauthorized" in error_msg:
+                    return {
+                        "error": "Erreur d'authentification - Vérifiez vos identifiants",
+                        "status": "MM-401",
+                    }
+                else:
+                    return {
+                        "error": f"Erreur de requête ({error_type}): {str(e)}",
+                        "status": "MM-506",
+                    }
+
+            # Validate HTTP status code
+            try:
+                response.raise_for_status()
+            except Exception as e:
+                status_code = (
+                    response.status_code
+                    if hasattr(response, "status_code")
+                    else "Unknown"
+                )
+                self._logger.error(f"HTTP {status_code} error in payment request: {e}")
+
+                # Try to parse error response
+                error_response = {"status": f"MM-505-{status_code}"}
+                if hasattr(response, "text") and response.text:
+                    try:
+                        error_data = response.json()
+                        error_response["error"] = error_data.get(
+                            "message", error_data.get("error", str(e))
+                        )
+                        # Include all error details from API
+                        error_response.update(error_data)
+                    except:
+                        error_response["error"] = f"Erreur HTTP {status_code}: {str(e)}"
+                else:
+                    error_response["error"] = f"Erreur HTTP {status_code}: {str(e)}"
+                return error_response
+
+            # Parse successful response
+            try:
+                if not hasattr(response, "text") or not response.text:
+                    self._logger.error("Empty response from payment API")
+                    return {
+                        "error": "Réponse vide de l'API Moov Money",
+                        "status": "MM-500",
+                    }
+
+                result = response.json()
+
+                # Log success or business errors
+                if "error" in result or result.get("status", "").lower() in [
+                    "failed",
+                    "error",
+                ]:
+                    self._logger.warning(
+                        f"Payment failed with business error: {result}"
+                    )
+                else:
+                    self._logger.info(
+                        f"Payment validation completed successfully: {result.get('status', 'OK')}"
+                    )
+
+                return result
+
+            except ValueError as e:
+                # JSON parsing error
+                self._logger.error(f"JSON parsing error: {e}")
+                return {
+                    "error": f"Erreur de format de réponse JSON: {str(e)}",
+                    "status": "MM-502",
+                    "raw_response": (
+                        response.text[:200] if hasattr(response, "text") else None
+                    ),
+                }
+            except Exception as e:
+                self._logger.exception(f"Error parsing payment response: {e}")
+                return {
+                    "error": f"Erreur de traitement de la réponse: {str(e)}",
+                    "status": "MM-502",
+                }
+
+        except ValueError as e:
+            # Configuration or validation errors
+            self._logger.error(f"Validation error: {e}")
+            return {
+                "error": f"Erreur de validation: {str(e)}",
+                "status": "MM-400",
+            }
         except Exception as e:
-            self._logger.error(f"Payment validation error: {e}")
-            if "timeout" in str(e).lower():
-                return {"error": "Timeout de l'API Moov Money"}
-            elif "connection" in str(e).lower():
-                return {"error": "Erreur de connexion à l'API Moov Money"}
-            elif "http" in str(e).lower():
-                return {"error": f"Erreur HTTP: {e}"}
-            else:
-                return {"error": f"Erreur inattendue: {str(e)}"}
+            # Catch-all for unexpected errors
+            self._logger.exception(f"Unexpected error in validate_payment: {e}")
+            return {
+                "error": f"Erreur inattendue ({type(e).__name__}): {str(e)}",
+                "status": "MM-506",
+            }
 
 
 class DevPayment(GenericPayment):
