@@ -11,8 +11,8 @@ API non officiel pour les paiements mobiles Orange Money, Moov Money et Ligdicas
 
 ## Dépendances
 
-- python = "^3.9"
-- requests = "^2.31.0"
+- python >= 3.10
+- requests >= 2.33.0
 
 ## Installation
 
@@ -31,19 +31,22 @@ from mobilemoney import validate_om_prod_payment
 
 
 
+url = "<Your OM API URL>"
 username = "<Your OM API username>"
 password = "<Your OM API password>"
 phonenumber = "<Your OM API phone number>"
 customer_phone = "<Your customer phone number>"
 customer_otp = "<Your customer OTP code>"
-amount = "<the amount>"
+amount = 100  # entier
 message = "<a message for user>"
+reference = None  # générée automatiquement si None
 
 
 response = validate_om_prod_payment(
-    username, password, phonenumber, customer_phone, customer_otp, amount, message
+    username, password, phonenumber, customer_phone, customer_otp, amount, message,
+    reference, url,
 )
-print(response)
+print(response)  # {"status": ..., "message": ..., "trans_id": ...}
 ```
 
 
@@ -54,26 +57,31 @@ from mobilemoney import MMPayment
 
 # exemple de paiement avec moov money
 
-username = "<Your OM API username>"
-password = "<Your OM API password>"
-phonenumber = "<Your OM API phone number>"
+url = "<Your Moov API URL>"
+username = "<Your Moov API username>"
+password = "<Your Moov API password>"
 customer_phone = "<Your customer phone number>"
 customer_otp = "<Your customer OTP code>"
-amount = "<the amount>"
+amount = 100  # entier
 message = "<a message for user>"
 otp_trans_id = "<TRANS ID received during the last OTP generation>"
 
-moov = MMPayment(phonenumber, username, password)
+with MMPayment(url, username, password) as moov:
+    response = moov.send_otp(customer_phone, amount)
+    print(response)
 
-response = moov.send_otp(customer_phone, amount)
-print(response)
+    response = moov.resend_otp(customer_phone, amount)
+    print(response)
 
-response = moov.resend_otp(customer_phone, amount)
-print(response)
-
-response = moov.validate_payment(customer_phone, customer_otp, amount, message, otp_trans_id)
-print(response)
+    response = moov.validate_payment(
+        customer_phone, customer_otp, amount, message, otp_trans_id
+    )
+    print(response)
 ```
+
+La vérification SSL est activée par défaut. Si la passerelle utilise un certificat
+auto-signé, passez le chemin du certificat fourni par l'opérateur :
+`verify_ssl="/chemin/vers/ca.pem"`.
 
 ## Contribution
 

@@ -16,33 +16,69 @@ from mobilemoney.ligdicash import (
 )
 
 
-__version__ = "0.0.1"
+def send_otp_for_moov_money_payment(
+    username: str,
+    password: str,
+    customer_phone: str,
+    amount: int,
+    url: str,
+    reference: str = None,
+    verify_ssl: bool = True,
+    is_resend: bool = False,
+):
+    payment = MMPayment(url, username, password)
+    if is_resend:
+        return payment.resend_otp(customer_phone, amount, verify_ssl, reference)
+    else:
+        return payment.send_otp(customer_phone, amount, verify_ssl, reference)
 
 
 def validate_moov_prod_payment(
     username: str,
     password: str,
-    phonenumber: str,
     customer_phone: str,
     customer_otp: str,
     amount: int,
     message: str,
+    otp_trans_id: str,
+    reference: str,
+    url,
+    verify_ssl: bool = True,
 ):
-    payment = MMPayment(phonenumber, username, password)
-    return payment.validate_payment(customer_phone, customer_otp, amount, message)
+    payment = MMPayment(url, username, password)
+    return payment.validate_payment(
+        customer_phone,
+        customer_otp,
+        amount,
+        message,
+        otp_trans_id,
+        reference,
+        verify_ssl=verify_ssl,
+    )
 
 
 def validate_moov_dev_payment(
     username: str,
     password: str,
-    phonenumber: str,
     customer_phone: str,
     customer_otp: str,
     amount: int,
     message: str,
+    otp_trans_id,
+    reference: str,
+    url: str,
+    verify_ssl: bool = True,
 ):
-    payment = MMDevPayment(phonenumber, username, password)
-    return payment.validate_payment(customer_phone, customer_otp, amount, message)
+    payment = MMDevPayment(url, username, password)
+    return payment.validate_payment(
+        customer_phone,
+        customer_otp,
+        amount,
+        message,
+        otp_trans_id,
+        reference,
+        verify_ssl=verify_ssl,
+    )
 
 
 def validate_om_prod_payment(
@@ -53,9 +89,14 @@ def validate_om_prod_payment(
     customer_otp: str,
     amount: int,
     message: str,
+    reference: str,
+    url,
+    verify_ssl: bool = True,
 ):
-    payment = OMPayment(phonenumber, username, password)
-    return payment.validate_payment(customer_phone, customer_otp, amount, message)
+    payment = OMPayment(url, phonenumber, username, password)
+    return payment.validate_payment(
+        customer_phone, customer_otp, amount, message, reference, verify_ssl=verify_ssl
+    )
 
 
 def validate_om_dev_payment(
@@ -66,12 +107,23 @@ def validate_om_dev_payment(
     customer_otp: str,
     amount: int,
     message: str,
+    reference: str,
+    url,
+    verify_ssl: bool = True,
 ):
-    payment = OMDevPayment(phonenumber, username, password)
-    return payment.validate_payment(customer_phone, customer_otp, amount, message)
+    payment = OMDevPayment(url, phonenumber, username, password)
+    return payment.validate_payment(
+        customer_phone, customer_otp, amount, message, reference, verify_ssl=verify_ssl
+    )
 
 
-def validate_ligdicash_payment(api_key, api_token, command):
+def validate_ligdicash_payment(
+    api_key,
+    api_token,
+    command,
+    url,
+    verify_ssl: bool = True,
+):
     """
     Validate a payment
         - command param must be :
@@ -126,10 +178,12 @@ def validate_ligdicash_payment(api_key, api_token, command):
                 "wiki": "https://client.ligdicash.com/wiki/createInvoice",
             }
     """
-    payment = LigdicashPaymentWithRedirect(username=api_key, password=api_token)
-    return payment.validate_payment(command)
+    payment = LigdicashPaymentWithRedirect(url, username=api_key, password=api_token)
+    return payment.validate_payment(command, verify_ssl=verify_ssl)
 
 
-def verify_ligdicash_payment_token(api_key, api_token, payment_token):
-    payment = LigdicashPaymentWithRedirect(username=api_key, password=api_token)
-    return payment.verify_token(payment_token)
+def verify_ligdicash_payment_token(
+    api_key, api_token, payment_token, url, verify_ssl: bool = True
+):
+    payment = LigdicashPaymentWithRedirect(url, username=api_key, password=api_token)
+    return payment.verify_token(url, payment_token, verify_ssl=verify_ssl)

@@ -2,16 +2,6 @@ import json
 
 from mobilemoney.base import BasePayment
 
-ligdicash_dev_url_with_redirect = (
-    "https://app.ligdicash.com/pay/v01/redirect/checkout-invoice/create/"
-)
-ligdicash_prod_url_with_redirect = (
-    "https://app.ligdicash.com/pay/v01/redirect/checkout-invoice/create/"
-)
-verify_url_with_redirect = (
-    "https://app.ligdicash.com/pay/v01/redirect/checkout-invoice/confirm/"
-)
-
 
 class GenericPaymentWithRedirect(BasePayment):
     def __init__(self, url="", username="", password=""):
@@ -83,33 +73,51 @@ class GenericPaymentWithRedirect(BasePayment):
             "Accept": "application/json",
         }
 
-        return self.post(
-            self._url,
-            headers=headers,
-            json={"commande": command},
-            verify=verify_ssl,
-        )
+        response_body = dict()
+        try:
+            response = self._make_request(
+                "POST",
+                self._url,
+                headers=headers,
+                json_data={"commande": command},
+                verify_ssl=verify_ssl,
+            )
+            response_body = response.content
+            response_body = json.loads(response_body)
+        except Exception as e:
+            self._logger.error(f"LigdiCash invoice creation failed: {e}")
+            response_body = dict()
 
-    def verify_token(self, token, verify_ssl=True):
+        return response_body
+
+    def verify_token(self, url, token, verify_ssl=True):
         headers = {
             "content-type": "application/json",
             "Apikey": self._username,
             "authorization": f"Bearer {self._password}",
             "accept": "application/json",
         }
-        response = self.get(
-            verify_url_with_redirect,
-            params={"invoiceToken": token},
-            headers=headers,
-            verify=verify_ssl,
-        )
-        response_json = response.json()
+        response_body = dict()
+        response = None
+        try:
+            response = self._make_request(
+                "GET",
+                url,
+                params={"invoiceToken": token},
+                headers=headers,
+                verify_ssl=verify_ssl,
+            )
+            response_body = response.content
+            response_body = json.loads(response_body)
+        except Exception as e:
+            self._logger.error(f"LigdiCash token verification failed: {e}")
+            response_body = dict()
 
-        if response_json.get("status", "") == "completed":
+        if response_body.get("status", "") == "completed":
             return True, response
-        elif response_json.get("status", "") == "nocompleted":
+        if response_body.get("status", "") == "nocompleted":
             return False, response
-        elif response_json.get("status", "") == "pending":
+        if response_body.get("status", "") == "pending":
             return None, response
         return None, response
 
@@ -127,6 +135,5 @@ class GenericPaymentWithRedirect(BasePayment):
 
 
 class Payment(GenericPaymentWithRedirect):
-    def __init__(self, username="", password=""):
-        url = ligdicash_prod_url_with_redirect
+    def __init__(self, url, username="", password=""):
         super().__init__(url, username, password)
