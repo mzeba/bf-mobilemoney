@@ -1,4 +1,5 @@
 import logging
+import requests
 import xml.etree.ElementTree as ET
 
 from mobilemoney.base import BasePayment
@@ -289,27 +290,26 @@ class GenericPayment(BasePayment):
                 )
             except Exception as e:
                 error_type = type(e).__name__
-                error_msg = str(e).lower()
-
                 self._logger.error(f"{error_type} during request: {e}")
 
-                # Classify error by type
-                if "timeout" in error_msg or "timed out" in error_msg:
+                # ConnectTimeout is both a Timeout and a ConnectionError, and
+                # SSLError is a ConnectionError, so the order of these checks matters
+                if isinstance(e, requests.exceptions.Timeout):
                     return {
                         "message": f"Timeout de l'API Orange Money ({self._url})",
                         "status": "OM-503",
                         "trans_id": "Error",
                     }
-                elif "connection" in error_msg or "resolve" in error_msg:
-                    return {
-                        "message": f"Erreur de connexion à l'API Orange Money ({self._url})",
-                        "status": "OM-504",
-                        "trans_id": "Error",
-                    }
-                elif "ssl" in error_msg or "certificate" in error_msg:
+                elif isinstance(e, requests.exceptions.SSLError):
                     return {
                         "message": f"Erreur SSL/Certificat: {str(e)}",
                         "status": "OM-495",
+                        "trans_id": "Error",
+                    }
+                elif isinstance(e, requests.exceptions.ConnectionError):
+                    return {
+                        "message": f"Erreur de connexion à l'API Orange Money ({self._url})",
+                        "status": "OM-504",
                         "trans_id": "Error",
                     }
                 else:
@@ -322,7 +322,7 @@ class GenericPayment(BasePayment):
             # Validate HTTP status code
             try:
                 response.raise_for_status()
-            except Exception as e:
+            except requests.exceptions.HTTPError as e:
                 status_code = (
                     response.status_code
                     if hasattr(response, "status_code")

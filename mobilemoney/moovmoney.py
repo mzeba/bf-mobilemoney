@@ -1,4 +1,5 @@
 import logging
+import requests
 from requests.auth import HTTPBasicAuth
 
 from mobilemoney.base import BasePayment
@@ -119,6 +120,72 @@ class GenericPayment(BasePayment):
             },
         }
 
+    def _request_error_response(self, error: Exception, context: str):
+        """
+        Map an exception raised while sending a request to an error response.
+
+        Args:
+            error (Exception): Exception raised by _make_request
+            context (str): Short description of the request, for logging
+
+        Returns:
+            dict: Error response with 'error' and 'status' keys
+        """
+        self._logger.error(f"{type(error).__name__} during {context}: {error}")
+
+        # ConnectTimeout is both a Timeout and a ConnectionError, and SSLError
+        # is a ConnectionError, so the order of these checks matters
+        if isinstance(error, requests.exceptions.Timeout):
+            return {
+                "error": f"Timeout de l'API Moov Money ({self._url})",
+                "status": "MM-503",
+            }
+        if isinstance(error, requests.exceptions.SSLError):
+            return {
+                "error": f"Erreur SSL/Certificat: {str(error)}",
+                "status": "MM-495",
+            }
+        if isinstance(error, requests.exceptions.ConnectionError):
+            return {
+                "error": f"Erreur de connexion à l'API Moov Money ({self._url})",
+                "status": "MM-504",
+            }
+        return {
+            "error": f"Erreur de requête ({type(error).__name__}): {str(error)}",
+            "status": "MM-506",
+        }
+
+    def _http_error_response(self, response, error: Exception, context: str):
+        """
+        Build an error response from a non-2xx HTTP response.
+
+        Args:
+            response (requests.Response): Response with an error status code
+            error (Exception): HTTPError raised by raise_for_status
+            context (str): Short description of the request, for logging
+
+        Returns:
+            dict: Error response, merged with the API's JSON error body if any
+        """
+        status_code = response.status_code
+        self._logger.error(f"HTTP {status_code} error in {context}: {error}")
+
+        error_response = {"status": f"MM-505-{status_code}"}
+        try:
+            error_data = response.json()
+        except ValueError:
+            error_data = None
+
+        if isinstance(error_data, dict):
+            error_response["error"] = error_data.get(
+                "message", error_data.get("error", str(error))
+            )
+            # Include all error details from API
+            error_response.update(error_data)
+        else:
+            error_response["error"] = f"Erreur HTTP {status_code}: {str(error)}"
+        return error_response
+
     def _send_otp(
         self,
         customer_phone: str,
@@ -209,63 +276,13 @@ class GenericPayment(BasePayment):
                     verify_ssl=verify_ssl,
                 )
             except Exception as e:
-                error_type = type(e).__name__
-                error_msg = str(e).lower()
-
-                self._logger.error(f"{error_type} during OTP request: {e}")
-
-                # Classify error by type
-                if "timeout" in error_msg or "timed out" in error_msg:
-                    return {
-                        "error": f"Timeout de l'API Moov Money ({self._url})",
-                        "status": "MM-503",
-                    }
-                elif "connection" in error_msg or "resolve" in error_msg:
-                    return {
-                        "error": f"Erreur de connexion à l'API Moov Money ({self._url})",
-                        "status": "MM-504",
-                    }
-                elif "ssl" in error_msg or "certificate" in error_msg:
-                    return {
-                        "error": f"Erreur SSL/Certificat: {str(e)}",
-                        "status": "MM-495",
-                    }
-                elif "401" in error_msg or "unauthorized" in error_msg:
-                    return {
-                        "error": "Erreur d'authentification - Vérifiez vos identifiants",
-                        "status": "MM-401",
-                    }
-                else:
-                    return {
-                        "error": f"Erreur de requête ({error_type}): {str(e)}",
-                        "status": "MM-506",
-                    }
+                return self._request_error_response(e, "OTP request")
 
             # Validate HTTP status code
             try:
                 response.raise_for_status()
-            except Exception as e:
-                status_code = (
-                    response.status_code
-                    if hasattr(response, "status_code")
-                    else "Unknown"
-                )
-                self._logger.error(f"HTTP {status_code} error in OTP request: {e}")
-
-                # Try to parse error response
-                error_response = {"status": f"MM-505-{status_code}"}
-                if hasattr(response, "text") and response.text:
-                    try:
-                        error_data = response.json()
-                        error_response["error"] = error_data.get(
-                            "message", error_data.get("error", str(e))
-                        )
-                        error_response.update(error_data)
-                    except:
-                        error_response["error"] = f"Erreur HTTP {status_code}: {str(e)}"
-                else:
-                    error_response["error"] = f"Erreur HTTP {status_code}: {str(e)}"
-                return error_response
+            except requests.exceptions.HTTPError as e:
+                return self._http_error_response(response, e, "OTP request")
 
             # Parse successful response
             try:
@@ -437,64 +454,13 @@ class GenericPayment(BasePayment):
                     verify_ssl=verify_ssl,
                 )
             except Exception as e:
-                error_type = type(e).__name__
-                error_msg = str(e).lower()
-
-                self._logger.error(f"{error_type} during payment request: {e}")
-
-                # Classify error by type
-                if "timeout" in error_msg or "timed out" in error_msg:
-                    return {
-                        "error": f"Timeout de l'API Moov Money ({self._url})",
-                        "status": "MM-503",
-                    }
-                elif "connection" in error_msg or "resolve" in error_msg:
-                    return {
-                        "error": f"Erreur de connexion à l'API Moov Money ({self._url})",
-                        "status": "MM-504",
-                    }
-                elif "ssl" in error_msg or "certificate" in error_msg:
-                    return {
-                        "error": f"Erreur SSL/Certificat: {str(e)}",
-                        "status": "MM-495",
-                    }
-                elif "401" in error_msg or "unauthorized" in error_msg:
-                    return {
-                        "error": "Erreur d'authentification - Vérifiez vos identifiants",
-                        "status": "MM-401",
-                    }
-                else:
-                    return {
-                        "error": f"Erreur de requête ({error_type}): {str(e)}",
-                        "status": "MM-506",
-                    }
+                return self._request_error_response(e, "payment request")
 
             # Validate HTTP status code
             try:
                 response.raise_for_status()
-            except Exception as e:
-                status_code = (
-                    response.status_code
-                    if hasattr(response, "status_code")
-                    else "Unknown"
-                )
-                self._logger.error(f"HTTP {status_code} error in payment request: {e}")
-
-                # Try to parse error response
-                error_response = {"status": f"MM-505-{status_code}"}
-                if hasattr(response, "text") and response.text:
-                    try:
-                        error_data = response.json()
-                        error_response["error"] = error_data.get(
-                            "message", error_data.get("error", str(e))
-                        )
-                        # Include all error details from API
-                        error_response.update(error_data)
-                    except:
-                        error_response["error"] = f"Erreur HTTP {status_code}: {str(e)}"
-                else:
-                    error_response["error"] = f"Erreur HTTP {status_code}: {str(e)}"
-                return error_response
+            except requests.exceptions.HTTPError as e:
+                return self._http_error_response(response, e, "payment request")
 
             # Parse successful response
             try:

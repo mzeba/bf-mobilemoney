@@ -98,6 +98,7 @@ class GenericPaymentWithRedirect(BasePayment):
             "accept": "application/json",
         }
         response_body = dict()
+        response = None
         try:
             response = requests.get(
                 url,

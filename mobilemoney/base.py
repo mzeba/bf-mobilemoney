@@ -1,7 +1,32 @@
 import logging
+import re
 import requests
 from requests.auth import HTTPBasicAuth
 from typing import Dict, Any, Optional, Union
+
+# Keys whose values must never appear in logs (compared case-insensitively)
+SENSITIVE_KEYS = {"password", "api_password", "otp", "authorization", "apikey"}
+_SENSITIVE_XML_RE = re.compile(
+    r"(<(api_password|otp)>)(.*?)(</\2>)", re.IGNORECASE | re.DOTALL
+)
+
+
+def redact(value: Any) -> Any:
+    """
+    Return a copy of value with secrets masked, for safe logging.
+
+    Handles dicts (JSON payloads, headers), lists and XML strings.
+    """
+    if isinstance(value, dict):
+        return {
+            k: "***" if str(k).lower() in SENSITIVE_KEYS else redact(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [redact(v) for v in value]
+    if isinstance(value, str):
+        return _SENSITIVE_XML_RE.sub(r"\1***\4", value)
+    return value
 
 
 class BasePayment(object):
@@ -133,11 +158,11 @@ class BasePayment(object):
             request_headers.update(headers)
 
         self._logger.debug(f"Making {method} request to: {url}")
-        self._logger.debug(f"Headers: {request_headers}")
+        self._logger.debug(f"Headers: {redact(request_headers)}")
         if data:
-            self._logger.debug(f"Data: {data}")
+            self._logger.debug(f"Data: {redact(data)}")
         if json_data:
-            self._logger.debug(f"JSON: {json_data}")
+            self._logger.debug(f"JSON: {redact(json_data)}")
 
         try:
             response = self._session.request(

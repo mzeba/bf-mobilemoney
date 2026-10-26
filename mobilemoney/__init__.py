@@ -19,7 +19,6 @@ from mobilemoney.ligdicash import (
 def send_otp_for_moov_money_payment(
     username: str,
     password: str,
-    phonenumber: str,
     customer_phone: str,
     amount: int,
     url: str,
@@ -37,7 +36,6 @@ def send_otp_for_moov_money_payment(
 def validate_moov_prod_payment(
     username: str,
     password: str,
-    phonenumber: str,
     customer_phone: str,
     customer_otp: str,
     amount: int,
@@ -45,6 +43,7 @@ def validate_moov_prod_payment(
     otp_trans_id: str,
     reference: str,
     url,
+    verify_ssl: bool = True,
 ):
     payment = MMPayment(url, username, password)
     return payment.validate_payment(
@@ -54,14 +53,13 @@ def validate_moov_prod_payment(
         message,
         otp_trans_id,
         reference,
-        verify_ssl=True,
+        verify_ssl=verify_ssl,
     )
 
 
 def validate_moov_dev_payment(
     username: str,
     password: str,
-    phonenumber: str,
     customer_phone: str,
     customer_otp: str,
     amount: int,
@@ -69,6 +67,7 @@ def validate_moov_dev_payment(
     otp_trans_id,
     reference: str,
     url: str,
+    verify_ssl: bool = True,
 ):
     payment = MMDevPayment(url, username, password)
     return payment.validate_payment(
@@ -78,7 +77,7 @@ def validate_moov_dev_payment(
         message,
         otp_trans_id,
         reference,
-        verify_ssl=True,
+        verify_ssl=verify_ssl,
     )
 
 
@@ -92,10 +91,11 @@ def validate_om_prod_payment(
     message: str,
     reference: str,
     url,
+    verify_ssl: bool = True,
 ):
     payment = OMPayment(url, phonenumber, username, password)
     return payment.validate_payment(
-        customer_phone, customer_otp, amount, message, reference, verify_ssl=True
+        customer_phone, customer_otp, amount, message, reference, verify_ssl=verify_ssl
     )
 
 
@@ -109,10 +109,11 @@ def validate_om_dev_payment(
     message: str,
     reference: str,
     url,
+    verify_ssl: bool = True,
 ):
     payment = OMDevPayment(url, phonenumber, username, password)
     return payment.validate_payment(
-        customer_phone, customer_otp, amount, message, reference, verify_ssl=True
+        customer_phone, customer_otp, amount, message, reference, verify_ssl=verify_ssl
     )
 
 
@@ -121,6 +122,7 @@ def validate_ligdicash_payment(
     api_token,
     command,
     url,
+    verify_ssl: bool = True,
 ):
     """
     Validate a payment
@@ -177,9 +179,11 @@ def validate_ligdicash_payment(
             }
     """
     payment = LigdicashPaymentWithRedirect(url, username=api_key, password=api_token)
-    return payment.validate_payment(command)
+    return payment.validate_payment(command, verify_ssl=verify_ssl)
 
 
-def verify_ligdicash_payment_token(api_key, api_token, payment_token, url):
+def verify_ligdicash_payment_token(
+    api_key, api_token, payment_token, url, verify_ssl: bool = True
+):
     payment = LigdicashPaymentWithRedirect(url, username=api_key, password=api_token)
-    return payment.verify_token(url, payment_token)
+    return payment.verify_token(url, payment_token, verify_ssl=verify_ssl)
