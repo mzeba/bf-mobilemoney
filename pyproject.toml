@@ -5,6 +5,13 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Operating System :: OS Independent",
 ]
 description = "Library for mobile money payment in Burkina Faso"
@@ -19,16 +26,16 @@ license-files = ["LICENSE"]
 dependencies = ["requests>=2.33.0"]
 keywords = [
     "orange money",
-    "ligdiash",
+    "ligdicash",
     "burkina mobile money",
     "mobile money",
     "moov money",
 ]
 
 [project.urls]
-Homepage = "https://github.com/parice02/bf-mobilemoney"
-Issues = "https://github.com/parice02/bf-mobilemoney/issues"
-Repository = "https://github.com/parice02/bf-mobilemoney.git"
+Homepage = "https://github.com/mzeba/bf-mobilemoney"
+Issues = "https://github.com/mzeba/bf-mobilemoney/issues"
+Repository = "https://github.com/mzeba/bf-mobilemoney.git"
 
 [tool.setuptools]
 packages = ["mobilemoney"]

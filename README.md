@@ -17,8 +17,8 @@ API non officiel pour les paiements mobiles Orange Money, Moov Money et Ligdicas
 ## Installation
 
 ```bash
-pip install git+https://github.com/parice02/bf-mobilemoney.git # with pip
-poetry add git+https://github.com/parice02/bf-mobilemoney.git # with poetry
+pip install git+https://github.com/mzeba/bf-mobilemoney.git # with pip
+poetry add git+https://github.com/mzeba/bf-mobilemoney.git # with poetry
 ```
 
 

@@ -1,3 +1,5 @@
+from importlib.metadata import PackageNotFoundError, version
+
 from mobilemoney.base import BasePayment
 from mobilemoney.orangemoney import (
     GenericPayment as OMGenericPayement,
@@ -14,6 +16,12 @@ from mobilemoney.ligdicash import (
     GenericPaymentWithRedirect as LigdicashGenericPaymentWithRedirect,
     Payment as LigdicashPaymentWithRedirect,
 )
+
+try:
+    # Single source of truth: the version declared in pyproject.toml
+    __version__ = version("bf-mobilemoney")
+except PackageNotFoundError:  # source checkout that was never installed
+    __version__ = "unknown"
 
 
 def send_otp_for_moov_money_payment(
