@@ -119,8 +119,9 @@ class BasePayment(object):
         data: Optional[Union[str, Dict[str, Any]]] = None,
         json_data: Optional[Dict[str, Any]] = None,
         auth: Optional[HTTPBasicAuth] = None,
-        verify_ssl: bool = True,
+        verify_ssl: Union[bool, str] = True,
         timeout: int = 30,
+        params: Optional[Dict[str, Any]] = None,
     ) -> requests.Response:
         """
         Make HTTP request using session with proper error handling.
@@ -132,8 +133,10 @@ class BasePayment(object):
             data (Union[str, Dict[str, Any]], optional): Request body data
             json_data (Dict[str, Any], optional): JSON request body
             auth (HTTPBasicAuth, optional): Authentication object
-            verify_ssl (bool, optional): Whether to verify SSL certificates. Defaults to True.
+            verify_ssl (Union[bool, str], optional): Whether to verify SSL certificates,
+                or path to a CA bundle. Defaults to True.
             timeout (int, optional): Request timeout in seconds. Defaults to 30.
+            params (Dict[str, Any], optional): Query string parameters
 
         Returns:
             requests.Response: HTTP response object
@@ -171,6 +174,7 @@ class BasePayment(object):
                 headers=request_headers,
                 data=data,
                 json=json_data,
+                params=params,
                 auth=auth,
                 verify=verify_ssl,
                 timeout=timeout,

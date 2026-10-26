@@ -1,6 +1,7 @@
 import logging
 import requests
-import xml.etree.ElementTree as ET
+# Safe against XML attacks here, see the comment in parse_result
+import xml.etree.ElementTree as ET  # nosec B405
 
 from mobilemoney.base import BasePayment
 from mobilemoney.utils import get_reference
@@ -145,9 +146,12 @@ class GenericPayment(BasePayment):
                     "trans_id": "Error",
                 }
 
-            # Parse XML with proper error handling
+            # Parse XML with proper error handling. Wrapping the response in
+            # <root> means any DOCTYPE/ENTITY declaration it contains lands
+            # inside an element, which is not well-formed: expat rejects it
+            # before expanding anything, so XXE and entity expansion are impossible.
             try:
-                root = ET.fromstring("<root>" + result + "</root>")
+                root = ET.fromstring("<root>" + result + "</root>")  # nosec B314
             except ET.ParseError as e:
                 error_msg = (
                     f"Erreur de parsing XML: {str(e)} - Réponse: {result[:100]}..."

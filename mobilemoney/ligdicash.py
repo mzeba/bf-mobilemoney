@@ -1,4 +1,3 @@
-import requests  # TODO replace with urllib3
 import json
 
 from mobilemoney.base import BasePayment
@@ -76,16 +75,17 @@ class GenericPaymentWithRedirect(BasePayment):
 
         response_body = dict()
         try:
-            response = requests.post(
+            response = self._make_request(
+                "POST",
                 self._url,
                 headers=headers,
-                json={"commande": command},
-                verify=verify_ssl,
+                json_data={"commande": command},
+                verify_ssl=verify_ssl,
             )
             response_body = response.content
             response_body = json.loads(response_body)
         except Exception as e:
-            print(e)
+            self._logger.error(f"LigdiCash invoice creation failed: {e}")
             response_body = dict()
 
         return response_body
@@ -100,16 +100,17 @@ class GenericPaymentWithRedirect(BasePayment):
         response_body = dict()
         response = None
         try:
-            response = requests.get(
+            response = self._make_request(
+                "GET",
                 url,
                 params={"invoiceToken": token},
                 headers=headers,
-                verify=verify_ssl,
+                verify_ssl=verify_ssl,
             )
             response_body = response.content
             response_body = json.loads(response_body)
         except Exception as e:
-            print(e)
+            self._logger.error(f"LigdiCash token verification failed: {e}")
             response_body = dict()
 
         if response_body.get("status", "") == "completed":

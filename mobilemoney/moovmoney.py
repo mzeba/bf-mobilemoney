@@ -190,7 +190,7 @@ class GenericPayment(BasePayment):
         self,
         customer_phone: str,
         amount: int,
-        verify_ssl=False,
+        verify_ssl=True,
         option="",
         reference: str = None,
     ):
@@ -200,7 +200,8 @@ class GenericPayment(BasePayment):
         Args:
             customer_phone (str): Customer's phone number
             amount (int): Payment amount
-            verify_ssl (bool, optional): Whether to verify SSL certificates. Defaults to False.
+            verify_ssl (bool | str, optional): Whether to verify SSL certificates,
+                or path to a CA bundle for a self-signed gateway. Defaults to True.
             option (str): OTP operation type (create or resend)
             reference (str, optional): Transaction reference. Auto-generated if None.
 
@@ -328,7 +329,7 @@ class GenericPayment(BasePayment):
         self,
         customer_phone: str,
         amount: int,
-        verify_ssl=False,
+        verify_ssl=True,
         reference: str = None,
     ):
         """
@@ -337,7 +338,8 @@ class GenericPayment(BasePayment):
         Args:
             customer_phone (str): Customer's phone number
             amount (int): Payment amount
-            verify_ssl (bool, optional): Whether to verify SSL certificates. Defaults to False.
+            verify_ssl (bool | str, optional): Whether to verify SSL certificates,
+                or path to a CA bundle for a self-signed gateway. Defaults to True.
             reference (str, optional): Transaction reference. Auto-generated if None.
 
         Returns:
@@ -352,7 +354,7 @@ class GenericPayment(BasePayment):
         self,
         customer_phone: str,
         amount: int,
-        verify_ssl=False,
+        verify_ssl=True,
         reference: str = None,
     ):
         """
@@ -361,7 +363,8 @@ class GenericPayment(BasePayment):
         Args:
             customer_phone (str): Customer's phone number
             amount (int): Payment amount
-            verify_ssl (bool, optional): Whether to verify SSL certificates. Defaults to False.
+            verify_ssl (bool | str, optional): Whether to verify SSL certificates,
+                or path to a CA bundle for a self-signed gateway. Defaults to True.
             reference (str, optional): Transaction reference. Auto-generated if None.
 
         Returns:
@@ -380,7 +383,7 @@ class GenericPayment(BasePayment):
         message: str,
         otp_trans_id: str,
         reference: str = None,
-        verify_ssl=False,
+        verify_ssl=True,
     ):
         """
         Validate and process payment through Moov Money API.
@@ -391,7 +394,8 @@ class GenericPayment(BasePayment):
             amount (int): Payment amount
             message (str): Payment description
             otp_trans_id (str): OTP transaction ID from send_otp response
-            verify_ssl (bool, optional): Whether to verify SSL certificates. Defaults to False.
+            verify_ssl (bool | str, optional): Whether to verify SSL certificates,
+                or path to a CA bundle for a self-signed gateway. Defaults to True.
             reference (str, optional): Transaction reference. Auto-generated if None.
 
         Returns:
