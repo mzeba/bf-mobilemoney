@@ -16,8 +16,8 @@ classifiers = [
 ]
 description = "Library for mobile money payment in Burkina Faso"
 authors = [
-    { name = "Mohamed ZEBA", email = "parice02@hotmail.com" },
-    { name = "Abdoul Kader KABORÉ", email = "derokabore@hotmail.com" },
+    { name = "Mohamed ZEBA", email = "mohamed.zeba@outlook.com" },
+    { name = "Abdoul Kader KABORÉ", email = "derokabore@gmail.com" },
 ]
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
